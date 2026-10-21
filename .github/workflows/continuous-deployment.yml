@@ -1,0 +1,77 @@
+# Continuous Deployment — deploy the worker after CI passes on main.
+#
+# The family's converged deployment minus the parts this repo has no use for: no
+# SPA (nothing to build or serve), no D1 (nothing to migrate), no secrets-store
+# bootstrap. What remains is the sequence that matters here: the wrangler config
+# materialized from the template — no committed secrets — then a dry run as a
+# gate, then the deploy.
+
+name: Continuous Deployment
+
+permissions:
+  contents: read
+
+on:
+  workflow_run:
+    workflows:
+      - Continuous Integration
+    branches:
+      - main
+    types:
+      - completed
+  workflow_dispatch:
+
+concurrency:
+  group: continuous-deployment-${{ github.event.workflow_run.head_branch || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy-worker:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    name: Deploy Cloudflare Worker
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+        with:
+          # The SHA CI approved, not the tip of main: a push that lands while the
+          # workflow_run is in flight must not be what gets deployed.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Setup Environment
+        uses: ./.github/actions/setup-env
+
+      # The script, not the wrapper path: `pnpm run prepare-config` is what sets
+      # `WRANGLER_TEMPLATE_PATH`, and the kit reads it at import time — before any
+      # code in the wrapper runs.
+      - name: Prepare Wrangler Configuration
+        uses: ./.github/actions/retry-step
+        with:
+          command: pnpm run prepare-config
+          max_attempts: '3'
+        env:
+          WRANGLER_JSONC: ${{ vars.WRANGLER_JSONC }}
+          WRANGLER_PATCH_JSON: ${{ vars.WRANGLER_PATCH_JSON }}
+          WRANGLER_VARS_PATCH_JSON: ${{ vars.WRANGLER_VARS_PATCH_JSON }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # A gate, not a rehearsal. Separate from the deploy below and deliberately
+      # **not** retried: a dry run that fails is a real defect — a bundle over the
+      # size limit, a binding the template no longer declares — and retrying it
+      # three times only delays the report while making the log harder to read.
+      - name: Dry Run Deploy with Wrangler
+        run: pnpm exec wrangler deploy --dry-run
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Deploy with Wrangler
+        uses: ./.github/actions/retry-step
+        with:
+          command: pnpm exec wrangler deploy
+          max_attempts: '3'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

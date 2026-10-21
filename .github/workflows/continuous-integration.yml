@@ -1,0 +1,113 @@
+# Continuous Integration — the gate every change passes before it reaches main.
+#
+# Job boundaries follow the family's converged CI: a failure that only one tool
+# can see gets a job that names that tool. `checks` holds the tree-wide reads
+# (typecheck, lint, formatting, god-files); `unit-tests` runs the suite and keeps
+# its coverage report; `dependabot-auto-merge` is the only writer, and it waits
+# for both.
+
+name: Continuous Integration
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: continuous-integration-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Typecheck and lint are separate from the gates that follow, because they need
+  # nothing but a checkout while the gates are read-only consumers of the tree.
+  checks:
+    name: Checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+
+      - name: Setup Environment
+        uses: ./.github/actions/setup-env
+
+      # `pnpm run typecheck` is `pnpm -r typecheck` plus the `test/` project,
+      # which no package's own `tsc` covers.
+      - name: Run Type Check and Lint
+        run: pnpm run typecheck && pnpm run lint
+
+      # Its own step, and read-only, because the lint step cannot catch this:
+      # `pnpm run lint` is `eslint --fix --quiet`, and `--fix` repairs what it can
+      # while `--quiet` suppresses the rest — so CI exits 0 on a tree Prettier
+      # rejects, the repairs land in the runner's checkout, and they are thrown
+      # away. `prettier --check` is the one command that fails instead of
+      # repairing.
+      - name: Check Formatting
+        run: pnpm run format:check
+
+      # A god file still typechecks, still lints, still tests: only the size
+      # budget sees it. The check is the kit's, run from the installed package
+      # rather than a local copy, so the budget and the layer table stay one
+      # source of truth.
+      - name: Check God-Files
+        uses: ./.github/actions/retry-step
+        with:
+          command: pnpm run check:god-files
+          max_attempts: '2'
+
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+
+      - name: Setup Environment
+        uses: ./.github/actions/setup-env
+
+      - name: Run Tests with Coverage
+        uses: ./.github/actions/retry-step
+        with:
+          command: pnpm run test:coverage
+          max_attempts: '2'
+
+      - name: Upload Coverage Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 14
+
+  dependabot-auto-merge:
+    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.user.login == 'dependabot[bot]' && github.event.pull_request.state == 'open' && !github.event.repository.fork }}
+    name: Auto-Merge Dependabot PR
+    needs:
+      - checks
+      - unit-tests
+    permissions:
+      contents: write
+      pull-requests: write
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+
+      # Auto-merge only after every gate above is green, which is what makes it
+      # safe: a dependency bump that breaks the suite waits for a human instead
+      # of merging itself.
+      - name: Enable Auto-Merge
+        uses: ./.github/actions/retry-step
+        with:
+          command: gh pr merge --auto --merge "$PR_URL"
+          max_attempts: '5'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
