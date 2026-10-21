@@ -1,0 +1,14 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "paths": {
+      "@discord-telegram-bridge/bridge-core": ["../packages/bridge-core/src"],
+      "@discord-telegram-bridge/bridge-core/*": ["../packages/bridge-core/src/*"],
+      "@discord-telegram-bridge/bridge": ["../apps/bridge/src"],
+      "@discord-telegram-bridge/bridge/*": ["../apps/bridge/src/*"]
+    }
+  },
+  "include": ["../worker-configuration.d.ts", "../apps/bridge/src/env.d.ts", "./**/*.ts"],
+  "exclude": ["node_modules"]
+}

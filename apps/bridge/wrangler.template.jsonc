@@ -1,0 +1,35 @@
+{
+  // "$version": 1778291472,
+  // "$minimumVersion": 1778244052,
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "discord-telegram-bridge",
+  "main": "apps/bridge/src/index.ts",
+  "compatibility_date": "2025-11-29",
+  "compatibility_flags": [],
+  "preview_urls": false,
+  "workers_dev": false,
+  "minify": true,
+  "observability": {
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "invocation_logs": true,
+    },
+  },
+  "routes": [],
+  "kv_namespaces": [
+    {
+      "binding": "BRIDGE_ROUTES",
+      "id": "00000000000000000000000000000000",
+      // "kv_name": "discord-telegram-bridge-routes",
+    },
+  ],
+  "vars": {
+    "ENVIRONMENT": "development",
+    // Cloudflare Access, for the admin API. Both are empty until a team
+    // domain and an application audience tag are configured; the admin routes
+    // answer 404 rather than opening up when they are not.
+    "CF_ACCESS_TEAM_DOMAIN": "",
+    "CF_ACCESS_AUD": "",
+  },
+}
