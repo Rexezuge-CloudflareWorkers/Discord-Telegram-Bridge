@@ -29,11 +29,11 @@
     "lint:fix": "node scripts/lint-workspaces.mjs --fix"
   },
   "devDependencies": {
-    "@rexezuge/errors": "1.9.2",
-    "@rexezuge/http": "1.9.2",
-    "@rexezuge/runtime": "1.9.2",
-    "@rexezuge/shared": "1.9.2",
-    "@rexezuge/tooling": "1.9.2",
+    "@rexezuge/errors": "1.9.4",
+    "@rexezuge/http": "1.9.4",
+    "@rexezuge/runtime": "1.9.4",
+    "@rexezuge/shared": "1.9.4",
+    "@rexezuge/tooling": "1.9.4",
     "@types/node": "26.6.6",
     "@vitest/coverage-v8": "4.1.11",
     "eslint": "10.12.0",
